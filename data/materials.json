@@ -1,0 +1,22 @@
+{
+  "PbI2": {
+    "full": "Lead(II) Iodide",
+    "risk": "HIGH",
+    "env": 9,
+    "health": 9,
+    "safety": 8,
+    "role": "precursor",
+    "hazards": ["Reproductive toxin", "Aquatic toxicity"],
+    "alternatives": ["BiI3", "SnI2"]
+  },
+
+  "DMF": {
+    "full": "Dimethylformamide",
+    "risk": "HIGH",
+    "env": 6,
+    "health": 8,
+    "safety": 6,
+    "role": "solvent",
+    "hazards": ["Reproductive toxicity", "Skin absorption hazard"]
+  }
+}
