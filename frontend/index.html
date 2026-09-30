@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Scientific Paper Analyser</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <header>
+        <h1>Scientific Paper Analyser</h1>
+        <p>Extract a Bill of Materials from a scientific paper</p>
+    </header>
+
+
+    <main>
+
+        <section class="upload-section">
+
+            <h2>Analyse a Paper</h2>
+
+            <p>
+                Upload a scientific paper in PDF format to extract
+                the materials used.
+            </p>
+
+            <input
+                type="file"
+                id="pdfFile"
+                accept=".pdf"
+            >
+
+            <button id="analyseButton">
+                Analyse Paper
+            </button>
+
+        </section>
+
+
+        <section id="statusSection" class="hidden">
+
+            <h2>Analysis Status</h2>
+
+            <p id="statusMessage">
+                Preparing analysis...
+            </p>
+
+        </section>
+
+
+        <section id="resultsSection" class="hidden">
+
+            <h2>Materials Found</h2>
+
+            <div id="materialsContainer"></div>
+
+        </section>
+
+    </main>
+
+
+    <script src="/static/js/app.js"></script>
+
+</body>
+
+</html>

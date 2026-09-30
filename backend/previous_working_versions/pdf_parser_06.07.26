@@ -1,0 +1,15 @@
+import fitz  # PyMuPDF
+import io       # lets python treats the uploaded PDF like a file
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:         # creates the function to extract the text
+    doc = fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf")           # creates a "doc" that contains all the pages of the PDF4
+
+    text = ""           # creates an empty string
+
+    for page in doc:
+        text += page.get_text()         # both lines - for every page extract all of the text and add it onto the end of the previous page - creates one long page
+
+    return text
+
+
+    # this works but only for nicely formatted pdfs 
