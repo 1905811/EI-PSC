@@ -1,3 +1,4 @@
+# This file specifies intentionally untracked files to ignore. Files already tracked by Git are not affected. 
 # Python
 __pycache__/
 *.py[cod]
@@ -29,3 +30,6 @@ Thumbs.db
 
 # Local backups
 Backup/
+
+# Instructions for GitHub actions
+Update_changes_to_GitHub.md
