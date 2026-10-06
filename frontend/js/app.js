@@ -30,7 +30,7 @@ analyseButton.addEventListener("click", async () => {
     try {
 
         const response = await fetch(
-            "http://127.0.0.1:8000/analyse",
+            "https://perovskite-mvp-api.onrender.com/analyse",
             {
                 method: "POST",
                 body: formData
