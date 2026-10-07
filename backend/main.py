@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -15,6 +16,15 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://perovskite-mvp.onrender.com/",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
