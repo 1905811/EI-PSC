@@ -16,10 +16,11 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://perovskite-mvp.onrender.com/",
+        "https://perovskite-mvp.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
