@@ -109,16 +109,13 @@ async def analyse(file: UploadFile = File(...)):
     # 1. Extract text from PDF
     text = extract_text_from_pdf(content)
 
-    # 2. Remove Abstract and Introduction
-    extraction_text = remove_abstract_and_introduction(text)
+    # 2. Extract materials
+    raw_materials = find_materials(text)    
 
-    # 3. Extract materials from the filtered text
-    raw_materials = find_materials(extraction_text)
-
-    # 4. Enrich using database
+    # 3. Enrich using database
     enriched = enrich_materials(raw_materials)
 
     return {
         "materials": enriched,
-        "text_length": len(extraction_text)
+        "text_length": len(text)
     }
