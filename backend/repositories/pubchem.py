@@ -111,3 +111,74 @@ def lookup_material(material_name):
         "properties": properties,
         "annotations": annotations
     }
+
+
+def get_material_identity(material_name):
+    """
+    Retrieve only the identity information needed by the
+    material extractor. Does not download PUG-View annotations.
+    """
+    try:
+        cid = get_cid(material_name)
+
+        if cid is None:
+            return {
+                "pubchem_found": False,
+                "pubchem_cid": None,
+                "canonical_name": None,
+                "formula": None,
+                "status": "not_found",
+            }
+
+        # Retrieve the PubChem record title.
+        title_url = (
+            f"{PUBCHEM_REST}/compound/cid/"
+            f"{cid}/description/JSON"
+        )
+        title_response = requests.get(title_url, timeout=10)
+        title_response.raise_for_status()
+        title_data = title_response.json()
+
+        descriptions = (
+            title_data.get("InformationList", {})
+            .get("Information", [])
+        )
+
+        canonical_name = next(
+            (
+                item["Title"]
+                for item in descriptions
+                if item.get("Title")
+            ),
+            None,
+        )
+
+        # Retrieve the molecular formula for verification.
+        properties = get_properties(cid)
+
+        if not canonical_name or not properties:
+            return {
+                "pubchem_found": True,
+                "pubchem_cid": cid,
+                "canonical_name": canonical_name,
+                "formula": properties.get("MolecularFormula"),
+                "status": "incomplete_record",
+            }
+
+        return {
+            "pubchem_found": True,
+            "pubchem_cid": cid,
+            "canonical_name": canonical_name,
+            "formula": properties.get("MolecularFormula"),
+            "status": "candidate_found",
+        }
+
+    except (requests.RequestException, ValueError):
+        return {
+            "pubchem_found": False,
+            "pubchem_cid": None,
+            "canonical_name": None,
+            "formula": None,
+            "status": "lookup_error",
+        }
+    

@@ -1,109 +1,119 @@
+
 import re
-from rapidfuzz import fuzz
+from collections import Counter
 
-# -----------------------------
-# 1. Canonical material registry (MVP version)
-# -----------------------------
-MATERIAL_ALIASES = {
-    "PbI2": ["PbI2", "lead iodide", "lead(ii) iodide", "lead (ii) iodide"],
-    "MAPbI3": ["MAPbI3", "methylammonium lead iodide", "CH3NH3PbI3"],
-    "FAPbI3": ["FAPbI3", "formamidinium lead iodide"],
-    "DMF": ["DMF", "dimethylformamide", "n,n-dimethylformamide"],
-    "DMSO": ["DMSO", "dimethyl sulfoxide"],
-    "MAI": ["MAI", "methylammonium iodide"],
-    "FAI": ["FAI", "formamidinium iodide"],
-    "CsPbI3": ["CsPbI3", "cesium lead iodide"],
-}
+from backend.repositories.pubchem import get_material_identity
 
-# -----------------------------
-# 2. Normalisation function
-# -----------------------------
+
 def normalise_text(text: str) -> str:
     text = text.lower()
-
-    # remove weird PDF spacing issues
     text = re.sub(r"\s+", " ", text)
-
-    # normalise brackets and punctuation
-    text = text.replace("–", "-").replace("—", "-")
-
-    return text
+    return text.replace("–", "-").replace("—", "-")
 
 
-# -----------------------------
-# 3. Formula detection (critical upgrade)
-# -----------------------------
-def extract_chemical_formulas(text: str):
-    """
-    Captures formulas like:
-    MAPbI3, FAPbI3, CsPbBr3, etc.
-    """
+def extract_chemical_formulas(text: str) -> list[str]:
+    """Extract formula-like candidates in document order."""
     pattern = r"\b[A-Z][a-z]?(?:[A-Z][a-z]?\d*){1,6}\b"
-    return list(set(re.findall(pattern, text)))
+    return list(dict.fromkeys(re.findall(pattern, text)))
 
 
-# -----------------------------
-# 4. Alias-based matching
-# -----------------------------
-def match_aliases(text):
-    found = []
-
-    for canonical, aliases in MATERIAL_ALIASES.items():
-        for alias in aliases:
-
-            # fuzzy match (handles OCR/PDF noise)
-            score = fuzz.partial_ratio(alias.lower(), text)
-
-            if score > 90 or alias.lower() in text:
-                found.append({
-                    "name": canonical,
-                    "matched_alias": alias,
-                    "confidence": score / 100,
-                    "source": "alias_match"
-                })
-                break
-
-    return found
+ELEMENTS = set("""
+H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca
+Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr
+Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba
+La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Hf Ta W Re Os Ir Pt
+Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm
+Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh
+Fl Mc Lv Ts Og
+""".split())
 
 
-# -----------------------------
-# 5. Formula-based matching
-# -----------------------------
-def match_formulas(formulas):
-    known = set(MATERIAL_ALIASES.keys())
-    found = []
+def is_standard_formula(value: str) -> bool:
+    """Check whether a string consists of valid element symbols and counts."""
+    tokens = re.findall(r"[A-Z][a-z]?(?:\d*)", value)
 
-    for f in formulas:
-        if f in known:
-            found.append({
-                "name": f,
-                "matched_alias": f,
-                "confidence": 0.95,
-                "source": "formula_match"
-            })
+    if not tokens or "".join(tokens) != value:
+        return False
 
-    return found
+    for token in tokens:
+        match = re.fullmatch(r"([A-Z][a-z]?)(\d*)", token)
+        if not match or match.group(1) not in ELEMENTS:
+            return False
+        if match.group(2) and int(match.group(2)) < 1:
+            return False
+
+    return True
 
 
-# -----------------------------
-# 6. Main pipeline
-# -----------------------------
-def find_materials(text: str):
+def formulae_match(formula_a: str, formula_b: str) -> bool:
+    """Compare elemental formulae regardless of element order."""
 
-    clean = normalise_text(text)
+    def parse_formula(formula: str):
+        tokens = re.findall(r"([A-Z][a-z]?)(\d*)", formula)
 
-    alias_hits = match_aliases(clean)
-    formula_hits = match_formulas(extract_chemical_formulas(text))
+        if not tokens or "".join(
+            element + count for element, count in tokens
+        ) != formula:
+            return None
 
-    combined = alias_hits + formula_hits
+        # Aggregate repeated elements rather than overwriting them.
+        counts = Counter()
+        for element, count in tokens:
+            counts[element] += int(count) if count else 1
 
-    # deduplicate by name (keep highest confidence)
-    best = {}
+        return counts
 
-    for m in combined:
-        name = m["name"]
+    parsed_a = parse_formula(formula_a)
+    parsed_b = parse_formula(formula_b)
 
-        if name not in best or m["confidence"] > best[name]["confidence"]:
-            best[name] = m
+    return parsed_a is not None and parsed_a == parsed_b
 
-    return list(best.values())
+
+def lookup_candidate(formula: str) -> dict:
+    result = get_material_identity(formula)
+    pubchem_formula = result.get("formula")
+    is_formula = is_standard_formula(formula)
+
+    if result["status"] == "lookup_error":
+        confidence = 0.0
+        verification = "lookup_error"
+
+    elif not result["pubchem_found"]:
+        confidence = 0.0
+        verification = "not_found"
+
+    elif not is_formula:
+        # A name or abbreviation was found, but its identity
+        # has not yet been independently verified.
+        confidence = None
+        verification = "identity_unverified"
+
+    elif (
+        pubchem_formula
+        and formulae_match(formula, pubchem_formula)
+    ):
+        confidence = 0.95
+        verification = "formula_match_candidate"
+
+    else:
+        confidence = 0.0
+        verification = "formula_mismatch"
+
+    return {
+        "name": formula,
+        "matched_alias": formula,
+        "confidence": confidence,
+        "source": "PubChem",
+        "pubchem_cid": result.get("pubchem_cid"),
+        "canonical_name": result.get("canonical_name"),
+        "verification": verification,
+    }
+
+
+def find_materials(text: str) -> list[dict]:
+    """Extract formula candidates and identify them via PubChem."""
+    if not text or not text.strip():
+        return []
+
+    formulas = extract_chemical_formulas(text)
+    return [lookup_candidate(formula) for formula in formulas]
