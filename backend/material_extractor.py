@@ -3,6 +3,7 @@ import re
 from collections import Counter
 
 from backend.repositories.pubchem import get_material_identity
+from backend.repositories.nomad import lookup_nomad_material
 
 
 def normalise_text(text: str) -> str:
@@ -21,10 +22,10 @@ ELEMENTS = set("""
 H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca
 Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr
 Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba
-La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Hf Ta W Re Os Ir Pt
-Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm
-Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh
-Fl Mc Lv Ts Og
+La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W
+Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U
+Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds
+Rg Cn Nh Fl Mc Lv Ts Og
 """.split())
 
 
@@ -56,7 +57,6 @@ def formulae_match(formula_a: str, formula_b: str) -> bool:
         ) != formula:
             return None
 
-        # Aggregate repeated elements rather than overwriting them.
         counts = Counter()
         for element, count in tokens:
             counts[element] += int(count) if count else 1
@@ -70,21 +70,71 @@ def formulae_match(formula_a: str, formula_b: str) -> bool:
 
 
 def lookup_candidate(formula: str) -> dict:
+    """Identify a material using PubChem, then NOMAD if not found."""
+
     result = get_material_identity(formula)
     pubchem_formula = result.get("formula")
     is_formula = is_standard_formula(formula)
 
-    if result["status"] == "lookup_error":
-        confidence = 0.0
-        verification = "lookup_error"
+    # A service error is not evidence that a material is absent.
+    if result.get("status") == "lookup_error":
+        return {
+            "name": formula,
+            "matched_alias": formula,
+            "confidence": 0.0,
+            "source": "PubChem",
+            "pubchem_cid": None,
+            "canonical_name": None,
+            "verification": "lookup_error",
+        }
 
-    elif not result["pubchem_found"]:
-        confidence = 0.0
-        verification = "not_found"
+    # Only query NOMAD when PubChem explicitly reports not_found.
+    if result.get("status") == "not_found":
+        nomad_result = lookup_nomad_material(formula)
 
-    elif not is_formula:
-        # A name or abbreviation was found, but its identity
-        # has not yet been independently verified.
+        if nomad_result.get("status") == "candidate_found":
+            return {
+                "name": formula,
+                "matched_alias": formula,
+                "confidence": None,
+                "source": "NOMAD",
+                "pubchem_cid": None,
+                "canonical_name": nomad_result.get("iupac_name"),
+                "formula": nomad_result.get("formula"),
+                "hill_formula": nomad_result.get("hill_formula"),
+                "nomad_entry_id": nomad_result.get("entry_id"),
+                "verification": "nomad_formula_match",
+            }
+
+        if nomad_result.get("status") == "lookup_error":
+            verification = "pubchem_not_found_nomad_lookup_error"
+        else:
+            verification = "not_found"
+
+        return {
+            "name": formula,
+            "matched_alias": formula,
+            "confidence": 0.0,
+            "source": "PubChem+NOMAD",
+            "pubchem_cid": None,
+            "canonical_name": None,
+            "verification": verification,
+        }
+
+    # PubChem returned a record, but an abbreviation or name
+    # has not been independently verified by the current logic.
+    if not result.get("pubchem_found"):
+        return {
+            "name": formula,
+            "matched_alias": formula,
+            "confidence": 0.0,
+            "source": "PubChem",
+            "pubchem_cid": result.get("pubchem_cid"),
+            "canonical_name": result.get("canonical_name"),
+            "verification": "unresolved",
+        }
+
+    if not is_formula:
         confidence = None
         verification = "identity_unverified"
 
@@ -111,7 +161,7 @@ def lookup_candidate(formula: str) -> dict:
 
 
 def find_materials(text: str) -> list[dict]:
-    """Extract formula candidates and identify them via PubChem."""
+    """Extract formula candidates and identify them via PubChem/NOMAD."""
     if not text or not text.strip():
         return []
 
